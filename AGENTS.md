@@ -6,8 +6,8 @@ built with Buildroot on a Debian development host and connected to GitHub.
 ## Buildroot
 
 - Use a fixed, documented Buildroot version. Before the first build, record an
-  exact release or commit and source checksum in the build documentation; no
-  version has been selected yet. Never build from a floating branch or latest tag.
+  exact release or commit and source checksum in the build documentation. The
+  selected pin is documented in README.md. Never build from a floating branch or latest tag.
 - Use out-of-tree builds with an explicit absolute `O=` output directory.
 - Keep board-specific customizations inside `BR2_EXTERNAL` whenever possible.
 - Do not modify vendored Buildroot sources unless there is no maintainable

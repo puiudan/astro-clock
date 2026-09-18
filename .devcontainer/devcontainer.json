@@ -1,0 +1,21 @@
+{
+  "name": "astro-clock Buildroot",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "containerUser": "developer",
+  "remoteUser": "developer",
+  "updateRemoteUserUID": true,
+  "mounts": [
+    "source=astro-clock-output-${devcontainerId},target=/var/cache/astro-clock/output,type=volume",
+    "source=astro-clock-downloads-${devcontainerId},target=/var/cache/astro-clock/downloads,type=volume",
+    "source=astro-clock-ccache-${devcontainerId},target=/var/cache/astro-clock/ccache,type=volume"
+  ],
+  "containerEnv": {
+    "ASTRO_OUTPUT_DIR": "/var/cache/astro-clock/output",
+    "ASTRO_DOWNLOAD_DIR": "/var/cache/astro-clock/downloads",
+    "ASTRO_CCACHE_DIR": "/var/cache/astro-clock/ccache"
+  },
+  "postStartCommand": "sudo /usr/local/bin/init-astro-cache"
+}

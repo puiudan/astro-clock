@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+buildroot_dir="$project_root/third_party/buildroot"
+buildroot_commit=d030e36bbc9669230c015be971b14b6e062cfdde
+command_name=${1:-help}
+if (( $# > 0 )); then shift; fi
+if (( $# > 0 )); then
+    printf 'Unexpected arguments; use ASTRO_JOBS for build parallelism.\n' >&2
+    exit 2
+fi
+
+case "$command_name" in
+    help)
+        printf 'Usage: scripts/buildroot {status|configure|menuconfig|savedefconfig|build}\n'
+        exit 0
+        ;;
+    status|configure|menuconfig|savedefconfig|build) ;;
+    *) printf 'Unknown command: %s\n' "$command_name" >&2; exit 2 ;;
+esac
+
+if [[ ! -f "$buildroot_dir/Makefile" ]]; then
+    printf 'Initialize sources first: git submodule update --init --recursive\n' >&2
+    exit 1
+fi
+actual_commit=$(git -C "$buildroot_dir" rev-parse HEAD)
+if [[ "$actual_commit" != "$buildroot_commit" ]]; then
+    printf 'Expected Buildroot %s; found %s. Restore the recorded submodule.\n' "$buildroot_commit" "$actual_commit" >&2
+    exit 1
+fi
+if [[ -n "$(git -C "$buildroot_dir" status --porcelain)" ]]; then
+    printf 'Buildroot checkout has local changes; restore clean pinned sources. Keep customizations in external/ and reproducible patches.\n' >&2
+    exit 1
+fi
+
+# Explicit absolute output paths keep all generated files outside source trees.
+output_dir=${ASTRO_OUTPUT_DIR:-"$project_root/.build/output"}
+download_dir=${ASTRO_DOWNLOAD_DIR:-"$project_root/.build/downloads"}
+ccache_dir=${ASTRO_CCACHE_DIR:-"$project_root/.build/ccache"}
+for path in "$output_dir" "$download_dir" "$ccache_dir"; do
+    if [[ "$path" != /* || "$path" =~ [[:space:]] ]]; then
+        printf 'Build paths must be absolute and contain no whitespace: %s\n' "$path" >&2
+        exit 2
+    fi
+done
+output_dir=$(realpath -m -- "$output_dir")
+download_dir=$(realpath -m -- "$download_dir")
+ccache_dir=$(realpath -m -- "$ccache_dir")
+for path in "$output_dir" "$download_dir" "$ccache_dir"; do
+    case "$path" in
+        "$project_root"|"$buildroot_dir"|"$buildroot_dir"/*|"$project_root/external"|"$project_root/external"/*)
+            printf 'Generated state cannot be stored in project source directories: %s\n' "$path" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ "$command_name" == status ]]; then
+    printf 'Buildroot: 2025.02.18 (%s)\nOutput: %s\nDownloads: %s\nCompiler cache: %s\n' \
+        "$actual_commit" "$output_dir" "$download_dir" "$ccache_dir"
+    exit 0
+fi
+if (( EUID == 0 )); then
+    printf 'Run configuration and builds as a non-root user.\n' >&2
+    exit 1
+fi
+if ! command -v make >/dev/null; then
+    printf 'make is unavailable; open the Dev Container first.\n' >&2
+    exit 1
+fi
+if [[ "$command_name" != configure && ! -f "$output_dir/.config" ]]; then
+    printf 'Configure first: scripts/buildroot configure\n' >&2
+    exit 1
+fi
+mkdir -p -- "$output_dir" "$download_dir" "$ccache_dir"
+make_args=(-C "$buildroot_dir" "O=$output_dir" "BR2_EXTERNAL=$project_root/external"
+    "BR2_DL_DIR=$download_dir" "BR2_CCACHE_DIR=$ccache_dir")
+case "$command_name" in
+    configure) exec make "${make_args[@]}" astro_clock_defconfig ;;
+    menuconfig) exec make "${make_args[@]}" menuconfig ;;
+    savedefconfig)
+        exec make "${make_args[@]}" "BR2_DEFCONFIG=$project_root/external/configs/astro_clock_defconfig" savedefconfig
+        ;;
+    build)
+        jobs=${ASTRO_JOBS:-$(getconf _NPROCESSORS_ONLN)}
+        [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || { printf 'ASTRO_JOBS must be a positive integer.\n' >&2; exit 2; }
+        exec make "${make_args[@]}" "-j$jobs"
+        ;;
+esac

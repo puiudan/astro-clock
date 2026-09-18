@@ -4,3 +4,9 @@
 node_modules/
 dist/
 .DS_Store
+
+# Wrapper output on hosts without container volumes.
+/.build/
+# Buildroot defaults, if invoked manually instead of through our wrapper.
+/third_party/buildroot/output/
+/third_party/buildroot/dl/
