@@ -1,0 +1,4 @@
+[agents]
+enabled = true
+# Maximum concurrent spawned-agent threads; the primary thread is excluded.
+max_concurrent_threads_per_session = 3
