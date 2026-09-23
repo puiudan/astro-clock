@@ -1,8 +1,11 @@
 # astro-clock
 
 Buildroot platform scaffold for the STM32MP157C-DK2 astronomical clock.
-The application and UI are not included yet. No firmware build or board test
-has been performed as part of this setup.
+The current milestone is a minimal serial console and Ethernet platform.
+The application and UI are not included. The complete Buildroot build passed
+inside the non-root Dev Container, including root filesystem and SD image
+generation.
+No board test has been performed.
 
 ## Pinned sources
 
@@ -136,9 +139,11 @@ working configuration to `external/configs/astro_clock_defconfig`; save desired
 menuconfig changes with `savedefconfig` before configuring again.
 
 The project defconfig starts from this pinned release's
-`configs/stm32mp157c_dk2_defconfig`, with compiler caching enabled. It reuses
+`configs/stm32mp157c_dk2_defconfig`, with compiler caching enabled, a
+`ttySTM0` login console at 115200 baud, and DHCP on `eth0`. It reuses
 upstream board overlays, Linux configuration, custom-source hashes, and image
-generation scripts. No board files are duplicated or vendored sources modified.
+generation scripts. The external Linux fragment disables display, audio,
+wireless and touchscreen support for this milestone. No board files are duplicated or vendored sources modified.
 The wrapper rejects an incorrect source commit or dirty submodule, including
 untracked files. Future source fixes must be reproducible patches integrated
 through the external tree instead of edits to checked-out Buildroot sources.
@@ -157,18 +162,30 @@ git status --short
 
 ## Firmware build and generated files
 
-After configuration validation, a future firmware build can be started explicitly:
+After configuration validation and authorization for regular-file image
+generation, start the firmware build explicitly:
 
 ```sh
 make build
-# Optional bounded parallelism:
+# Optional bounded package compilation parallelism:
 ASTRO_JOBS=4 make build
 ```
 
-This setup has not run these build commands. A successful full build is expected
-to produce `sdcard.img` under the output directory's `images/` folder. The image
-has not been built or tested on an STM32MP157C-DK2. Writing it to storage requires
-separate explicit approval; this project provides no flashing command.
+`ASTRO_JOBS` sets both make parallelism and Buildroot's `BR2_JLEVEL`, so
+recursive package builds use the requested limit.
+
+The full build produced `/var/cache/astro-clock/output/images/sdcard.img`
+(128,380,928 bytes) and a 125,829,120-byte ext4 root filesystem (`rootfs.ext4`
+is a symlink to `rootfs.ext2`). Buildroot invokes its built `mkfs.ext4` on
+the regular rootfs image, then genimage assembles a GPT in the regular file
+`sdcard.img`. The user explicitly authorized these regular-file operations.
+Filesystem checks and primary/backup GPT integrity checks passed.
+Writing an image to storage requires separate explicit approval; this project
+provides no flashing command. Build success does not establish hardware boot.
+
+The baseline permits a root login without a password over serial. No SSH
+server is enabled. Use an isolated development Ethernet network and review
+authentication and component maintenance before deployment.
 
 Three Docker named volumes, scoped with Dev Containers' stable workspace
 identifier, preserve state across container recreation:
@@ -229,9 +246,11 @@ The current host has Docker and the Dev Container CLI, but Docker socket access
 is denied to the current user; sudo requires an interactive password. The host
 lacks make, GCC, and ShellCheck. The development image was rebuilt and the
 container recreated on 2026-09-18; a runtime check confirmed a non-root shell
-and `codex-cli 0.155.0` on PATH. Real Kconfig validation remains pending;
-neither a full firmware build nor hardware verification has run. Inside the
-Dev Container, the next validation commands are:
+and `codex-cli 0.155.0` on PATH. Kconfig validation, host dependency checks, and the static checks below
+passed in the running non-root Dev Container on 2026-09-20. No container
+dependency changes or rebuild were required. The full build completed on
+2026-09-22; hardware boot remains unverified.
+The configuration validation commands are:
 
 ```sh
 shellcheck scripts/buildroot .devcontainer/init-cache.sh

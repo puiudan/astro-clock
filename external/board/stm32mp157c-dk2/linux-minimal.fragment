@@ -1,0 +1,10 @@
+# Serial-console and Ethernet milestone: omit display, audio and wireless.
+# Keep the upstream board configuration for storage, power and wired networking.
+# CONFIG_DRM is not set
+# CONFIG_FB is not set
+# CONFIG_BACKLIGHT_LCD_SUPPORT is not set
+# CONFIG_SOUND is not set
+# CONFIG_WIRELESS is not set
+# CONFIG_WLAN is not set
+# CONFIG_BT is not set
+# CONFIG_INPUT_TOUCHSCREEN is not set
