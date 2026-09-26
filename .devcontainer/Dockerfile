@@ -48,4 +48,10 @@ RUN curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/codex-install.sh \
     && test "$(codex --version)" = 'codex-cli 0.155.0' \
     && rm /tmp/codex-install.sh
 
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends procps \
+    && rm -rf /var/lib/apt/lists/*
+USER developer
+
 WORKDIR /workspaces/astro-clock
