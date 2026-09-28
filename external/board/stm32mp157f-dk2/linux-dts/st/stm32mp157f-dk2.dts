@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+/* Local compatibility target for the pinned pre-F-DK2 sources.
+ * Reuse DK2 wiring and retain the conservative 650 MHz clock configuration.
+ * This is not a backport of the newer SCMI/OP-TEE F-DK2 platform.
+ */
+#include "stm32mp157c-dk2.dts"
+
+/ {
+	model = "STMicroelectronics STM32MP157F-DK2 Discovery Board";
+	compatible = "st,stm32mp157f-dk2", "st,stm32mp157";
+};

@@ -1,5 +1,7 @@
 # Serial-console and Ethernet milestone: omit display, audio and wireless.
 # Keep the upstream board configuration for storage, power and wired networking.
+# DRM used to select I2C implicitly. The root SD card needs the I2C PMIC.
+CONFIG_I2C=y
 # CONFIG_DRM is not set
 # CONFIG_FB is not set
 # CONFIG_BACKLIGHT_LCD_SUPPORT is not set

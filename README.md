@@ -1,11 +1,16 @@
 # astro-clock
 
-Buildroot platform scaffold for the STM32MP157C-DK2 astronomical clock.
+Buildroot platform scaffold for the STM32MP157F-DK2 astronomical clock
+(MB1272 Var4.0 Rev.C-03), originally based on the C-DK2 configuration.
 The current milestone is a minimal serial console and Ethernet platform.
 The application and UI are not included. The complete Buildroot build passed
 inside the non-root Dev Container, including root filesystem and SD image
 generation.
-No board test has been performed.
+The first hardware test reached Linux but stalled waiting for the root SD card.
+The I2C/PMIC configuration fix and an external F-DK2 compatibility target have
+been built and checked offline; a second hardware boot is pending. See the
+[boot-failure report](docs/boot-fix-2026-09-26.md), including the retained 650 MHz
+clock limitation and exact image checksum.
 
 ## Pinned sources
 
@@ -141,9 +146,11 @@ menuconfig changes with `savedefconfig` before configuring again.
 The project defconfig starts from this pinned release's
 `configs/stm32mp157c_dk2_defconfig`, with compiler caching enabled, a
 `ttySTM0` login console at 115200 baud, and DHCP on `eth0`. It reuses
-upstream board overlays, Linux configuration, custom-source hashes, and image
-generation scripts. The external Linux fragment disables display, audio,
-wireless and touchscreen support for this milestone. No board files are duplicated or vendored sources modified.
+upstream Linux configuration, custom-source hashes, and image generation scripts.
+The external tree supplies F-DK2 compatibility device trees and an extlinux
+overlay selecting the F-DK2 DTB, ttySTM0 at 115200, and /dev/mmcblk0p4. The external Linux fragment disables display, audio,
+wireless and touchscreen support for this milestone. The fragment explicitly enables I2C for the PMIC after removing DRM. Vendored
+Buildroot sources remain unmodified.
 The wrapper rejects an incorrect source commit or dirty submodule, including
 untracked files. Future source fixes must be reproducible patches integrated
 through the external tree instead of edits to checked-out Buildroot sources.

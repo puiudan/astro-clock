@@ -15,6 +15,6 @@ Keep changes focused. Never commit outputs, downloads, generated images, or
 secrets. Do not run destructive storage commands or push, merge, rebase,
 force-push, or rewrite Git history without explicit user approval.
 Run appropriate authorized checks and report exact commands and outcomes.
-Distinguish host tests and build results from actual STM32MP157C-DK2 hardware
+Distinguish host tests and build results from actual STM32MP157F-DK2 hardware
 tests. State any unverified behavior explicitly.
 """

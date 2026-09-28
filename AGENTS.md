@@ -1,6 +1,6 @@
 # Repository instructions
 
-This repository contains an embedded astronomical clock for STM32MP157C-DK2,
+This repository contains an embedded astronomical clock for STM32MP157F-DK2,
 built with Buildroot on a Debian development host and connected to GitHub.
 
 ## Buildroot
@@ -44,5 +44,5 @@ built with Buildroot on a Debian development host and connected to GitHub.
 - Add tests for astronomical calculations and time-zone-sensitive logic.
 - Clearly distinguish static checks, host tests, build verification, and hardware
   verification. Never claim real hardware testing unless it was actually done
-  on the STM32MP157C-DK2; report unverified behavior explicitly.
+  on the STM32MP157F-DK2; report unverified behavior explicitly.
 - During the initial agent-configuration task, do not compile, commit, or push.

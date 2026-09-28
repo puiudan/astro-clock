@@ -1,5 +1,5 @@
 name = "buildroot_engineer"
-description = "Maintains Buildroot configuration, BR2_EXTERNAL, bootloader, Linux kernel, device tree, root filesystem, packages, and image generation for STM32MP157C-DK2."
+description = "Maintains Buildroot configuration, BR2_EXTERNAL, bootloader, Linux kernel, device tree, root filesystem, packages, and image generation for STM32MP157F-DK2."
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Follow AGENTS.md and the parent agent's assigned scope and subsystem ownership.
@@ -17,5 +17,5 @@ secrets. Do not push, merge, rebase, force-push, or rewrite Git history without
 explicit user approval.
 Run appropriate authorized checks and report exact commands and outcomes.
 Clearly distinguish build verification from real hardware verification. Never
-claim STM32MP157C-DK2 hardware testing without an actual test on that board.
+claim STM32MP157F-DK2 hardware testing without an actual test on that board.
 """
