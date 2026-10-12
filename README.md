@@ -12,6 +12,9 @@ this: the user-reported hardware boot on 2026-09-28 reached the Buildroot login
 prompt on `ttySTM0`. See the [boot-fix report](docs/boot-fix-2026-09-26.md),
 including the retained 650 MHz clock limitation and exact image checksum.
 Older C-DK2 era reports are kept in [`docs/history/`](docs/history/README.md).
+The development loop (serial console, board networking, SSH, deploy and
+flashing, all driven from the Dev Container) is described in
+[`docs/dev-loop.md`](docs/dev-loop.md); Claude Code specifics are in `CLAUDE.md`.
 
 ## Pinned sources
 
@@ -189,12 +192,15 @@ is a symlink to `rootfs.ext2`). Buildroot invokes its built `mkfs.ext4` on
 the regular rootfs image, then genimage assembles a GPT in the regular file
 `sdcard.img`. The user explicitly authorized these regular-file operations.
 Filesystem checks and primary/backup GPT integrity checks passed.
-Writing an image to storage requires separate explicit approval; this project
-provides no flashing command. Build success does not establish hardware boot.
+Writing an image to storage requires separate explicit approval. The user runs
+`sudo scripts/host/flash-sd.sh` over U-Boot UMS (see `docs/dev-loop.md`); agents
+never flash. Build success does not establish hardware boot.
 
-The baseline permits a root login without a password over serial. No SSH
-server is enabled. Use an isolated development Ethernet network and review
-authentication and component maintenance before deployment.
+The image permits a root login without a password over the serial console only.
+Dropbear SSH accepts public keys only (`-s`); the keys come from the git-ignored
+`external/board/stm32mp157f-dk2/local/authorized_keys`. The board sits on a
+direct, NATed development link (`enp0s31f6`, 10.42.0.0/24). Review
+authentication and component maintenance before any other deployment.
 
 Three Docker named volumes, scoped with Dev Containers' stable workspace
 identifier, preserve state across container recreation:
