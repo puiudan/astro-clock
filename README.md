@@ -7,10 +7,11 @@ The application and UI are not included. The complete Buildroot build passed
 inside the non-root Dev Container, including root filesystem and SD image
 generation.
 The first hardware test reached Linux but stalled waiting for the root SD card.
-The I2C/PMIC configuration fix and an external F-DK2 compatibility target have
-been built and checked offline; a second hardware boot is pending. See the
-[boot-failure report](docs/boot-fix-2026-09-26.md), including the retained 650 MHz
-clock limitation and exact image checksum.
+The I2C/PMIC configuration fix and an external F-DK2 compatibility target fixed
+this: the user-reported hardware boot on 2026-09-28 reached the Buildroot login
+prompt on `ttySTM0`. See the [boot-fix report](docs/boot-fix-2026-09-26.md),
+including the retained 650 MHz clock limitation and exact image checksum.
+Older C-DK2 era reports are kept in [`docs/history/`](docs/history/README.md).
 
 ## Pinned sources
 
@@ -81,9 +82,9 @@ that workspace. Run `up` successfully with the same absolute workspace path
 first, then retry `exec`. The first `up` builds the development image only;
 it does not build firmware.
 
-On this host, Docker and the CLI are installed, but the current user cannot
-access Docker's socket. If your host requires administrator access to Docker,
-run the installed CLI with sudo in your own terminal and enter your password:
+On this host the user `dan` is in the `docker` group, so the commands above
+work without sudo. Use them by default. If a host requires administrator access
+to Docker instead, run the installed CLI with sudo in your own terminal:
 
 ```sh
 sudo /home/dan/.devcontainers/bin/devcontainer up --workspace-folder /home/dan/astro-clock --update-remote-user-uid-default never
@@ -116,8 +117,8 @@ To apply Dockerfile changes, run **Dev Containers: Rebuild Container** in VS
 Code. The equivalent CLI command on this host is:
 
 ```sh
-sudo /home/dan/.devcontainers/bin/devcontainer up --workspace-folder /home/dan/astro-clock --update-remote-user-uid-default never --remove-existing-container
-sudo /home/dan/.devcontainers/bin/devcontainer exec --workspace-folder /home/dan/astro-clock bash
+devcontainer up --workspace-folder /home/dan/astro-clock --remove-existing-container
+devcontainer exec --workspace-folder /home/dan/astro-clock bash
 ```
 
 Recreating the container preserves the three named Buildroot volumes described
@@ -249,14 +250,14 @@ wrapper targets, their absolute paths and save destination, and rejection of
 relative paths, external-tree output paths, and invalid job counts. That check
 did not invoke Buildroot or compile anything.
 
-The current host has Docker and the Dev Container CLI, but Docker socket access
-is denied to the current user; sudo requires an interactive password. The host
+At that time Docker socket access was denied to the host user; `dan` has since
+joined the `docker` group. Sudo requires an interactive password. The host
 lacks make, GCC, and ShellCheck. The development image was rebuilt and the
 container recreated on 2026-09-18; a runtime check confirmed a non-root shell
 and `codex-cli 0.155.0` on PATH. Kconfig validation, host dependency checks, and the static checks below
 passed in the running non-root Dev Container on 2026-09-20. No container
 dependency changes or rebuild were required. The full build completed on
-2026-09-22; hardware boot remains unverified.
+2026-09-22; the F-DK2 image booted on hardware on 2026-09-28 (user-reported).
 The configuration validation commands are:
 
 ```sh
