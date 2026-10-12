@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# BusyBox ntpd client using /etc/ntp.conf. The -S hook writes the RTC and the
+# last known good time after sync, and publishes status in /run/ntp.status.
+#
+
+DAEMON=/usr/sbin/ntpd
+PIDFILE=/var/run/ntpd.pid
+HOOK=/usr/libexec/astroclock/ntpd-event
+
+start() {
+	printf "Starting ntpd: "
+	echo "event=none synced=no since=$(date -u +%s)" > /run/ntp.status
+	if start-stop-daemon -S -q -b -m -p "$PIDFILE" --exec "$DAEMON" -- -n -S "$HOOK"; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+}
+stop() {
+	printf "Stopping ntpd: "
+	if start-stop-daemon -K -q -p "$PIDFILE"; then echo "OK"; else echo "FAIL"; fi
+	rm -f "$PIDFILE"
+}
+
+case "$1" in
+	start) start ;;
+	stop) stop ;;
+	restart|reload) stop; sleep 1; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

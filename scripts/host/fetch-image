@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Copy the latest sdcard.img out of the container's output volume into the
+# git-ignored .build/artifacts/ on the host, with a .sha256 file (no sudo).
+#   scripts/host/fetch-image   -> .build/artifacts/astroclock-sdcard-<UTC stamp>.img
+set -euo pipefail
+project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+container=astro-clock-dev
+src=/var/cache/astro-clock/output/images/sdcard.img
+dest_dir=$project_root/.build/artifacts
+mkdir -p -- "$dest_dir"
+stamp=$(docker exec "$container" date -u -r "$src" +%Y%m%dT%H%M%SZ)
+dest=$dest_dir/astroclock-sdcard-$stamp.img
+docker exec "$container" sha256sum "$src" | awk '{print $1}' > "$dest.sha256.container"
+docker cp "$container:$src" "$dest"
+(cd "$dest_dir" && sha256sum "$(basename -- "$dest")" > "$dest.sha256")
+if [[ "$(awk '{print $1}' "$dest.sha256")" != "$(cat "$dest.sha256.container")" ]]; then
+    echo "fetch-image: checksum mismatch after copy" >&2; exit 1
+fi
+rm -f -- "$dest.sha256.container"
+ln -sfn -- "$(basename -- "$dest")" "$dest_dir/astroclock-sdcard-latest.img"
+ln -sfn -- "$(basename -- "$dest").sha256" "$dest_dir/astroclock-sdcard-latest.img.sha256"
+printf '%s\n%s  %s bytes\n' "$dest" "$(awk '{print $1}' "$dest.sha256")" "$(stat -c %s "$dest")"

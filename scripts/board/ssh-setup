@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Idempotent SSH setup for the board, run inside the Dev Container:
+#  - dev keypair ~/.ssh/astro_board_ed25519 (persistent ~/.ssh volume), created once
+#  - its public key in external/board/stm32mp157f-dk2/local/authorized_keys
+#    (git-ignored; the post-build script bakes it into the image)
+#  - a managed "Host board" block in ~/.ssh/config -> root@10.42.0.2
+# Add other public keys (e.g. the iPad's) to local/authorized_keys by hand.
+set -euo pipefail
+# shellcheck source=scripts/board/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+
+key=$HOME/.ssh/astro_board_ed25519
+keys_file=$board_project_root/external/board/stm32mp157f-dk2/local/authorized_keys
+config=$HOME/.ssh/config
+board_ip=${BOARD_IP:-10.42.0.2}
+
+install -d -m 0700 "$HOME/.ssh"
+if [[ ! -f $key ]]; then
+    ssh-keygen -q -t ed25519 -N '' -C "astro-clock-dev@$(hostname)" -f "$key"
+    echo "created $key"
+else
+    echo "kept existing $key"
+fi
+pub=$(cat "$key.pub")
+
+mkdir -p -- "$(dirname -- "$keys_file")"
+if [[ ! -f $keys_file ]]; then
+    printf '# Public keys allowed to log in as root on the board (git-ignored).\n' > "$keys_file"
+fi
+if grep -qxF -- "$pub" "$keys_file"; then
+    echo "dev key already in $keys_file"
+else
+    printf '%s\n' "$pub" >> "$keys_file"
+    echo "added dev key to $keys_file (rebuild the image to install it)"
+fi
+
+begin='# >>> astro-clock board (managed by scripts/board/ssh-setup) >>>'
+end='# <<< astro-clock board <<<'
+block="$begin
+Host board astroclock
+    HostName $board_ip
+    User root
+    IdentityFile $key
+    IdentitiesOnly yes
+    UserKnownHostsFile ~/.ssh/known_hosts.board
+    StrictHostKeyChecking accept-new
+    ConnectTimeout 5
+    ServerAliveInterval 15
+    ServerAliveCountMax 2
+$end"
+touch "$config" && chmod 0600 "$config"
+# Replace an existing managed block, keep everything else.
+awk -v b="$begin" -v e="$end" '$0==b{skip=1} !skip{print} $0==e{skip=0}' "$config" > "$config.tmp"
+printf '%s\n' "$block" >> "$config.tmp"
+if cmp -s "$config" "$config.tmp"; then rm -f "$config.tmp"; echo "unchanged $config"
+else mv -f "$config.tmp" "$config"; echo "updated $config (Host board -> root@$board_ip)"; fi

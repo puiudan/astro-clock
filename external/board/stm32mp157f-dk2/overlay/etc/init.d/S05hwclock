@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# System clock <-> STM32 RTC (UTC). The DK2 may have no RTC backup battery: after
+# a power loss the RTC restarts at 2000-01-01. Never move the clock backwards
+# past the last known good time saved by the NTP hook or at shutdown.
+#
+
+LAST=/var/lib/astroclock/last-time
+
+restore() {
+	printf "Setting system clock from RTC: "
+	hwclock -s -u 2>/dev/null && rtc_ok=1 || rtc_ok=0
+	now=$(date -u +%s)
+	last=$(cat "$LAST" 2>/dev/null || echo 0)
+	case $last in ''|*[!0-9]*) last=0 ;; esac
+	if [ "$now" -lt "$last" ]; then
+		date -u -s "@$last" >/dev/null
+		echo "RTC behind last known time, using saved time ($(date))"
+	elif [ "$rtc_ok" = 1 ]; then
+		echo "OK ($(date))"
+	else
+		echo "RTC unreadable ($(date))"
+	fi
+}
+
+save() {
+	printf "Saving system clock: "
+	# Only trust the clock if it is not older than the last saved time.
+	now=$(date -u +%s)
+	last=$(cat "$LAST" 2>/dev/null || echo 0)
+	case $last in ''|*[!0-9]*) last=0 ;; esac
+	if [ "$now" -ge "$last" ]; then
+		mkdir -p "${LAST%/*}"
+		echo "$now" > "$LAST"
+		hwclock -w -u && echo "OK" || echo "FAIL"
+	else
+		echo "skipped (clock behind saved time)"
+	fi
+}
+
+case "$1" in
+	start) restore ;;
+	stop) save ;;
+	restart|reload) save; restore ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

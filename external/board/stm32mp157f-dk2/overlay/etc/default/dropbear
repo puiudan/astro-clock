@@ -1,0 +1,3 @@
+# Key-only SSH: -s disables password logins for every account (the root
+# password is empty for the serial console, which dropbear never accepts).
+DROPBEAR_ARGS="-s"

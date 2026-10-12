@@ -1,0 +1,20 @@
+#!/bin/sh
+# BusyBox ntpd -S hook. $1 is the event (step, stratum, periodic, unsync);
+# ntpd exports stratum, offset, poll_interval and freq_drift_ppm.
+# On a synchronized clock: write the STM32 RTC (UTC) and the last known good
+# time (rate-limited to protect the SD card), and publish /run/ntp.status.
+
+LAST=/var/lib/astroclock/last-time
+now=$(date -u +%s)
+synced=no
+if [ "$1" != unsync ] && [ "${stratum:-16}" -lt 16 ] 2>/dev/null; then
+	synced=yes
+	hwclock -w -u 2>/dev/null
+	last=$(cat "$LAST" 2>/dev/null || echo 0)
+	case $last in ''|*[!0-9]*) last=0 ;; esac
+	if [ "$1" != periodic ] || [ $((now - last)) -ge 3600 ]; then
+		mkdir -p "${LAST%/*}"
+		echo "$now" > "$LAST.tmp" && mv "$LAST.tmp" "$LAST"
+	fi
+fi
+echo "event=$1 synced=$synced stratum=${stratum:-?} offset=${offset:-?} poll=${poll_interval:-?} since=$now" > /run/ntp.status
