@@ -41,8 +41,9 @@ ENV PATH=/home/developer/.local/bin:${PATH}
 
 # Install the exact standalone Codex release as the development user. The
 # official installer is also pinned: fail rather than execute changed content.
+# Installer re-reviewed and re-pinned 2026-10-12 after upstream changed it.
 RUN curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/codex-install.sh \
-    && printf '%s\n' 'dd4282a1a3c8188f792513f2f16afb852e63ce3b98dbbc67684f716ebcc1e862  /tmp/codex-install.sh' \
+    && printf '%s\n' '150e3cf675682efeaac115aa3747add3f27887896d04ce6d0b56478d8b428bf6  /tmp/codex-install.sh' \
        | sha256sum --check --strict \
     && CODEX_NON_INTERACTIVE=1 sh /tmp/codex-install.sh --release 0.155.0 \
     && test "$(codex --version)" = 'codex-cli 0.155.0' \

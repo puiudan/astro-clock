@@ -45,8 +45,9 @@ requires an intentional Dockerfile change and rebuilding the container.
 
 Codex CLI is installed in the image as `developer`, pinned to **0.155.0**
 through the [official standalone installer](https://chatgpt.com/codex/install.sh).
-The installer downloaded on 2026-09-18 is verified before execution using
-SHA-256 `dd4282a1a3c8188f792513f2f16afb852e63ce3b98dbbc67684f716ebcc1e862`.
+The installer (re-reviewed and re-pinned on 2026-10-12 after upstream replaced
+the 2026-09-18 version) is verified before execution using
+SHA-256 `150e3cf675682efeaac115aa3747add3f27887896d04ce6d0b56478d8b428bf6`.
 The image build checks that `codex --version` reports `codex-cli 0.155.0`.
 If the installer changes, rebuilding fails until its replacement is reviewed
 and the Dockerfile checksum is updated intentionally. Codex is available on
