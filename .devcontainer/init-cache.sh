@@ -11,7 +11,7 @@ export PATH
 cache_uid=$(id -u developer)
 cache_gid=$(id -g developer)
 for cache_dir in /var/cache/astro-clock/output /var/cache/astro-clock/downloads /var/cache/astro-clock/ccache \
-    /home/developer/.ssh; do
+    /home/developer/.ssh /home/developer/.claude; do
     [ -d "$cache_dir" ] && [ ! -L "$cache_dir" ] || exit 2
     find "$cache_dir" -xdev \( ! -uid "$cache_uid" -o ! -gid "$cache_gid" \) \
         -execdir chown -h "$cache_uid:$cache_gid" {} +

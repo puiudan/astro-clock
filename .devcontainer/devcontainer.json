@@ -16,6 +16,7 @@
     "source=astro-clock-downloads-${devcontainerId},target=/var/cache/astro-clock/downloads,type=volume",
     "source=astro-clock-ccache-${devcontainerId},target=/var/cache/astro-clock/ccache,type=volume",
     "source=astro-clock-ssh-${devcontainerId},target=/home/developer/.ssh,type=volume",
+    "source=astro-clock-claude-${devcontainerId},target=/home/developer/.claude,type=volume",
     "source=/dev,target=/dev/host,type=bind,readonly"
   ],
   "containerEnv": {

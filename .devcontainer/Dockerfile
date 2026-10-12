@@ -67,6 +67,20 @@ RUN apt-get update \
 USER developer
 # Created in the image so named volumes mounted here inherit developer
 # ownership and mode 0700 on first use.
-RUN install -d -m 0700 /home/developer/.ssh
+RUN install -d -m 0700 /home/developer/.ssh /home/developer/.claude
+
+# Claude Code: the exact native release binary, verified against the SHA-256
+# published in the official 2.1.296 manifest (linux-x64), checked 2026-10-12.
+# The generic install.sh is not used because it bootstraps from the floating
+# "latest" release. Auto-update is disabled; config and login live in the
+# persistent ~/.claude volume (CLAUDE_CONFIG_DIR).
+ENV DISABLE_AUTOUPDATER=1 CLAUDE_CONFIG_DIR=/home/developer/.claude
+RUN curl -fsSL https://downloads.claude.ai/claude-code-releases/2.1.296/linux-x64/claude -o /tmp/claude \
+    && printf '%s\n' '24972e3bc859fab2b46ed4c1e51f7d6130f06d3bd550811a114640de3370d0de  /tmp/claude' \
+       | sha256sum --check --strict \
+    && install -D -m 0755 /tmp/claude /home/developer/.local/share/claude/versions/2.1.296 \
+    && ln -sfn ../share/claude/versions/2.1.296 /home/developer/.local/bin/claude \
+    && rm /tmp/claude \
+    && test "$(claude --version)" = '2.1.296 (Claude Code)'
 
 WORKDIR /workspaces/astro-clock

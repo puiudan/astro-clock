@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(scripts/board/*)",
+      "Bash(./scripts/board/*)",
+      "Bash(make)",
+      "Bash(make help)",
+      "Bash(make status)",
+      "Bash(make configure)",
+      "Bash(make savedefconfig)",
+      "Bash(make build)",
+      "Bash(ASTRO_JOBS=* make build)",
+      "Bash(./scripts/buildroot status)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git restore *)",
+      "Bash(shellcheck *)"
+    ],
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git * push*)",
+      "Bash(dd *)",
+      "Bash(*| dd *)",
+      "Bash(mkfs*)",
+      "Bash(*mkfs.*)",
+      "Bash(sudo *)",
+      "Bash(*flash-sd*)",
+      "Bash(*> /dev/host/*)",
+      "Bash(*>/dev/host/*)",
+      "Bash(*tee /dev/host/*)",
+      "Edit(//dev/host/**)",
+      "Write(//dev/host/**)",
+      "Edit(//dev/**)",
+      "Write(//dev/**)"
+    ]
+  }
+}

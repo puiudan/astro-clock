@@ -3,6 +3,8 @@
 #   scripts/host/dev               interactive bash in /workspaces/astro-clock
 #   scripts/host/dev console       attach the board serial console (detach: C-b d)
 #   scripts/host/dev claude        start Claude Code in the container
+#   scripts/host/dev rc            Claude Code Remote Control in tmux session claude-rc
+#                                  (survives SSH disconnects; drive it from the Claude app)
 #   scripts/host/dev up            create/start the container (devcontainer up)
 #   scripts/host/dev rebuild       rebuild the image and recreate the container
 #   scripts/host/dev <cmd> [args]  run any command in the container
@@ -22,6 +24,12 @@ tty_flags=(-i)
 [[ -t 0 && -t 1 ]] && tty_flags=(-it)
 case ${1:-} in
     '') exec docker exec "${tty_flags[@]}" -w /workspaces/astro-clock "$container" bash -l ;;
+    rc)
+        docker exec "$container" tmux has-session -t =claude-rc 2>/dev/null \
+            || docker exec -w /workspaces/astro-clock "$container" tmux new-session -d -s claude-rc claude rc
+        [[ -t 0 ]] && exec docker exec -it "$container" tmux attach -t =claude-rc
+        echo "claude rc running in tmux session claude-rc (attach: scripts/host/dev tmux attach -t claude-rc)"
+        exit 0 ;;
     console) shift; exec docker exec "${tty_flags[@]}" -w /workspaces/astro-clock "$container" scripts/board/console "$@" ;;
     *) exec docker exec "${tty_flags[@]}" -w /workspaces/astro-clock "$container" "$@" ;;
 esac
