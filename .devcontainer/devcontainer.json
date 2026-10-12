@@ -7,10 +7,16 @@
   "containerUser": "developer",
   "remoteUser": "developer",
   "updateRemoteUserUID": true,
+  "runArgs": [
+    "--name=astro-clock-dev",
+    "--device-cgroup-rule=c 166:* rmw"
+  ],
   "mounts": [
     "source=astro-clock-output-${devcontainerId},target=/var/cache/astro-clock/output,type=volume",
     "source=astro-clock-downloads-${devcontainerId},target=/var/cache/astro-clock/downloads,type=volume",
-    "source=astro-clock-ccache-${devcontainerId},target=/var/cache/astro-clock/ccache,type=volume"
+    "source=astro-clock-ccache-${devcontainerId},target=/var/cache/astro-clock/ccache,type=volume",
+    "source=astro-clock-ssh-${devcontainerId},target=/home/developer/.ssh,type=volume",
+    "source=/dev,target=/dev/host,type=bind,readonly"
   ],
   "containerEnv": {
     "ASTRO_OUTPUT_DIR": "/var/cache/astro-clock/output",

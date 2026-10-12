@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Print the last n lines (default 50) of the current serial log, without
+# carriage returns. -f keeps following it.
+#   scripts/board/serial-tail [-f] [n]
+set -euo pipefail
+# shellcheck source=scripts/board/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+
+follow=()
+if [[ ${1:-} == -f ]]; then follow=(-F); shift; fi
+lines=${1:-50}
+[[ $lines =~ ^[0-9]+$ ]] || board_die "usage: serial-tail [-f] [n]"
+log=$(board_current_log)
+tail -n "$lines" "${follow[@]}" -- "$log" | tr -d '\r'

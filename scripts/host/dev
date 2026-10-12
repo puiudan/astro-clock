@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Host helper (no sudo; needs docker group): enter the Dev Container.
+#   scripts/host/dev               interactive bash in /workspaces/astro-clock
+#   scripts/host/dev console       attach the board serial console (detach: C-b d)
+#   scripts/host/dev claude        start Claude Code in the container
+#   scripts/host/dev up            create/start the container (devcontainer up)
+#   scripts/host/dev rebuild       rebuild the image and recreate the container
+#   scripts/host/dev <cmd> [args]  run any command in the container
+set -euo pipefail
+project_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
+container=astro-clock-dev
+devcontainer_cli=${DEVCONTAINER_CLI:-$(command -v devcontainer || echo "$HOME/.devcontainers/bin/devcontainer")}
+
+case ${1:-} in
+    up) exec "$devcontainer_cli" up --workspace-folder "$project_root" ;;
+    rebuild) exec "$devcontainer_cli" up --workspace-folder "$project_root" --remove-existing-container ;;
+esac
+if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" != true ]]; then
+    "$devcontainer_cli" up --workspace-folder "$project_root" >/dev/null
+fi
+tty_flags=(-i)
+[[ -t 0 && -t 1 ]] && tty_flags=(-it)
+case ${1:-} in
+    '') exec docker exec "${tty_flags[@]}" -w /workspaces/astro-clock "$container" bash -l ;;
+    console) shift; exec docker exec "${tty_flags[@]}" -w /workspaces/astro-clock "$container" scripts/board/console "$@" ;;
+    *) exec docker exec "${tty_flags[@]}" -w /workspaces/astro-clock "$container" "$@" ;;
+esac

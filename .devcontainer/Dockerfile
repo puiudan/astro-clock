@@ -53,6 +53,20 @@ USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends procps \
     && rm -rf /var/lib/apt/lists/*
+
+# Board access (dev loop): serial console in tmux, SSH/scp/rsync to the board.
+# Versions come from the same pinned Debian snapshot. The ST-LINK VCP node is
+# root:dialout (gid 20 on Debian hosts), so developer joins dialout; access is
+# further limited by the device cgroup rule in devcontainer.json.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       iputils-ping openssh-client picocom python3-serial tmux \
+    && rm -rf /var/lib/apt/lists/* \
+    && test "$(getent group dialout | cut -d: -f3)" = 20 \
+    && usermod -aG dialout developer
 USER developer
+# Created in the image so named volumes mounted here inherit developer
+# ownership and mode 0700 on first use.
+RUN install -d -m 0700 /home/developer/.ssh
 
 WORKDIR /workspaces/astro-clock

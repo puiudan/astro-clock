@@ -10,3 +10,7 @@ dist/
 # Buildroot defaults, if invoked manually instead of through our wrapper.
 /third_party/buildroot/output/
 /third_party/buildroot/dl/
+
+# Dev loop: serial logs and local-only board secrets.
+/logs/
+/external/board/stm32mp157f-dk2/local/

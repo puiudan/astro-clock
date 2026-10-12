@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Run one shell command on the board over the serial console and print only its output.
+
+Usage: scripts/board/serial-run [-c] [--no-login] "<cmd>" [timeout_seconds]
+
+The command is typed into the tmux "board" session (started if needed) and
+wrapped in unique begin/end markers that carry its exit status. The output
+between the markers is read back from the session's picocom log. The exit
+status is the remote command's status, 124 on timeout, or 2/3 on local errors.
+
+  -c          send Ctrl-C first (abort whatever is running on the console)
+  --no-login  do not log in automatically if a "login:" prompt is showing
+
+This is the fallback channel when SSH is not available. Kernel messages printed
+to the console while the command runs can appear in its output.
+"""
+import fcntl
+import os
+import re
+import subprocess
+import sys
+import time
+import uuid
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
+LOG_DIR = os.path.join(ROOT, "logs", "serial")
+SESSION = os.environ.get("BOARD_TMUX_SESSION", "board")
+ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[()][0-9A-Za-z]")
+PROMPT = re.compile(r"[#$] ?$")
+
+
+def die(msg, code=2):
+    print(f"serial-run: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def tmux(*args, check=True):
+    return subprocess.run(["tmux", *args], check=check, capture_output=True, text=True)
+
+
+def send(text, enter=True):
+    if text:
+        tmux("send-keys", "-t", f"={SESSION}:", "-l", "--", text)
+    if enter:
+        tmux("send-keys", "-t", f"={SESSION}:", "Enter")
+
+
+def clean(data):
+    return ANSI.sub("", data.decode("utf-8", "replace")).replace("\r", "")
+
+
+class Log:
+    def __init__(self, path):
+        self.path = path
+        self.offset = os.path.getsize(path)
+
+    def read_new(self):
+        with open(self.path, "rb") as f:
+            f.seek(self.offset)
+            data = f.read()
+        self.offset += len(data)
+        return clean(data)
+
+
+def wait_quiet(log, settle=0.6, limit=4.0):
+    """Collect output until the console has been quiet for `settle` seconds."""
+    text, deadline, last = "", time.monotonic() + limit, time.monotonic()
+    while time.monotonic() < deadline:
+        chunk = log.read_new()
+        if chunk:
+            text, last = text + chunk, time.monotonic()
+        elif text and time.monotonic() - last >= settle:
+            break
+        time.sleep(0.1)
+    return text
+
+
+def last_line(text):
+    lines = [l for l in text.split("\n") if l.strip()]
+    return lines[-1].rstrip() if lines else ""
+
+
+def ensure_shell(log, auto_login):
+    """Bring the console to a shell prompt, logging in as root if needed."""
+    send("")
+    tail = last_line(wait_quiet(log))
+    for _ in range(3):
+        if tail.lower().endswith("password:"):
+            # A stale login attempt (e.g. line noise taken as a user name):
+            # fail it; login prints "Login incorrect" after a few seconds.
+            send("")
+            tail = last_line(wait_quiet(log, settle=1.0, limit=10.0))
+        elif tail.endswith("login:"):
+            if not auto_login:
+                die("console is at a login prompt (--no-login given)", 3)
+            send("root")
+            tail = last_line(wait_quiet(log, limit=8.0))
+            if tail.lower().endswith("password:"):
+                die("root login asks for a password; log in manually via scripts/board/console", 3)
+        else:
+            break
+    if not tail:
+        die("no response on the serial console (board off, booting, or busy; try -c)", 3)
+    if not PROMPT.search(tail):
+        die(f"no shell prompt on the console (last line: {tail[-60:]!r}); try -c", 3)
+
+
+def main(argv):
+    ctrl_c, auto_login, rest = False, True, []
+    for a in argv:
+        if a == "-c":
+            ctrl_c = True
+        elif a == "--no-login":
+            auto_login = False
+        elif a in ("-h", "--help"):
+            print(__doc__.strip())
+            return 0
+        else:
+            rest.append(a)
+    if not 1 <= len(rest) <= 2 or not rest[0].strip():
+        die('usage: serial-run [-c] [--no-login] "<cmd>" [timeout_seconds]')
+    cmd = rest[0]
+    try:
+        timeout = float(rest[1]) if len(rest) == 2 else 30.0
+    except ValueError:
+        die("timeout must be a number of seconds")
+
+    if tmux("has-session", "-t", f"={SESSION}", check=False).returncode != 0:
+        subprocess.run([os.path.join(HERE, "console"), "-d"], check=True, stdout=sys.stderr)
+        time.sleep(1.0)
+    os.makedirs(LOG_DIR, exist_ok=True)
+    lock = open(os.path.join(LOG_DIR, ".serial-run.lock"), "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+
+    log = Log(os.path.realpath(os.path.join(LOG_DIR, "current.log")))
+    if ctrl_c:
+        send("\x03", enter=False)
+        wait_quiet(log, limit=2.0)
+    ensure_shell(log, auto_login)
+
+    tag = uuid.uuid4().hex[:12]
+    begin, end = f"__SRB_{tag}", re.compile(rf"^__SRE_{tag}_rc=(\d+)$", re.M)
+    # The markers are assembled by printf on the board, so the echoed command
+    # line ("__SRB <tag>") never matches the output marker ("__SRB_<tag>").
+    send(f"printf '%s_%s\\n' __SRB {tag}; ( {cmd}\n) 2>&1; "
+         f"printf '%s_%s_rc=%s\\n' __SRE {tag} $?")
+
+    text, deadline = "", time.monotonic() + timeout
+    while True:
+        text += log.read_new()
+        m = end.search(text)
+        if m:
+            break
+        if time.monotonic() > deadline:
+            start = text.find(begin + "\n")
+            partial = text[start + len(begin) + 1:] if start >= 0 else text
+            sys.stdout.write(partial)
+            die(f"timed out after {timeout:g}s; the command may still be running (use -c to abort)", 124)
+        time.sleep(0.1)
+
+    start = text.rfind(begin + "\n", 0, m.start())
+    if start < 0:
+        die("end marker seen without begin marker; output was garbled", 3)
+    sys.stdout.write(text[start + len(begin) + 1:m.start()])
+    return int(m.group(1))
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Start or attach the persistent serial console: tmux session "board" running
+# picocom on the ST-LINK VCP at 115200 8N1, no flow control. Every session
+# start writes a new log under logs/serial/; logs/serial/current.log points to it.
+#
+#   scripts/board/console        start if needed, then attach (detach: C-b d)
+#   scripts/board/console -d     start if needed, do not attach (for agents)
+#   scripts/board/console -k     stop the session
+#
+# Exit picocom with C-a C-x; the session then ends. If the USB port goes away
+# (replug, board power cycle), the console waits and reconnects to the same log.
+set -euo pipefail
+board_baud=115200
+# shellcheck source=scripts/board/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+
+reconnect_loop() {
+    local log=$1 dev
+    while :; do
+        if dev=$(board_serial_device 2>/dev/null) && [[ -c $dev ]]; then
+            printf '\r\n[console] %s: opening %s\r\n' "$(date -Is)" "$dev" | tee -a "$log"
+            # picocom appends to the log; exit status 0 means the user quit.
+            if picocom --baud "$board_baud" --databits 8 --parity n --stopbits 1 \
+                    --flow n --quiet --logfile "$log" "$dev"; then
+                exit 0
+            fi
+            printf '\r\n[console] %s: port closed, waiting for it to return\r\n' "$(date -Is)" | tee -a "$log"
+        fi
+        sleep 2
+    done
+}
+
+action=attach
+case ${1:-} in
+    '') ;;
+    -d|--detach) action=start ;;
+    -k|--kill) action='kill' ;;
+    --loop) reconnect_loop "$2" ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) board_die "unknown option: $1 (see --help)" ;;
+esac
+
+if [[ $action == kill ]]; then
+    tmux kill-session -t "=$board_session" 2>/dev/null && echo "stopped session $board_session" || echo "no session $board_session"
+    exit 0
+fi
+
+if ! board_session_running; then
+    dev=$(board_serial_device)
+    [[ -r $dev && -w $dev ]] || board_die "cannot open $dev (check dialout group and device cgroup rule)"
+    mkdir -p -- "$board_log_dir"
+    log="$board_log_dir/$(date -u +%Y%m%dT%H%M%SZ).log"
+    : > "$log"
+    ln -sfn -- "$(basename -- "$log")" "$board_log_dir/current.log"
+    tmux new-session -d -s "$board_session" -x 200 -y 50 \
+        "$(printf '%q ' "$0" --loop "$log")"
+    tmux set-option -t "$board_session" remain-on-exit off >/dev/null
+    printf 'started session %s on %s\nlog: %s\n' "$board_session" "$dev" "$log"
+fi
+
+if [[ $action == attach ]]; then
+    [[ -t 0 ]] || board_die "attach needs a terminal; use -d from scripts"
+    exec tmux attach -t "=$board_session"
+fi
