@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Copy a file or directory to the board without reflashing.
+#   scripts/board/deploy <local-path> <remote-path>
+# Uses rsync over SSH when the board has rsync (preserves modes, only sends
+# changes), otherwise scp in legacy mode (dropbear has no SFTP server).
+# Trailing-slash semantics are rsync's: dir/ copies the contents of dir.
+set -euo pipefail
+# shellcheck source=scripts/board/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+[[ $# -eq 2 ]] || board_die "usage: deploy <local-path> <remote-path>"
+src=$1 dst=$2
+[[ -e $src ]] || board_die "no such local path: $src"
+if ssh -o BatchMode=yes board 'command -v rsync >/dev/null'; then
+    rsync -rlptz --info=stats1 -e ssh -- "$src" "board:$dst"
+    echo "deployed (rsync): $src -> board:$dst"
+else
+    scp -O -r -p -q -- "$src" "board:$dst"
+    echo "deployed (scp): $src -> board:$dst"
+fi

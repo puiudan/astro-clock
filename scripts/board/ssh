@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Interactive SSH (or ssh with extra args) to the board: root@10.42.0.2 via the
+# "board" entry that scripts/board/ssh-setup writes to ~/.ssh/config.
+#   scripts/board/ssh [ssh-args...] [command]
+set -euo pipefail
+# shellcheck source=scripts/board/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+grep -q '^Host board' "$HOME/.ssh/config" 2>/dev/null || board_die "no 'Host board' in ~/.ssh/config; run scripts/board/ssh-setup"
+exec ssh board "$@"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Run one command on the board over SSH, non-interactively; exits with its status.
+#   scripts/board/run "<cmd>"
+# (255 means SSH itself failed; use scripts/board/serial-run as the fallback.)
+set -euo pipefail
+# shellcheck source=scripts/board/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+[[ $# -eq 1 && -n $1 ]] || board_die 'usage: run "<cmd>"'
+exec ssh -o BatchMode=yes board "$1"

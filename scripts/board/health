@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Board health over SSH: identity, time/timezone, NTP, RTC, disk, network,
+# relevant kernel messages, and a PASS/FAIL summary. Exit status = failures.
+#   scripts/board/health
+set -uo pipefail
+here=$(dirname -- "${BASH_SOURCE[0]}")
+# shellcheck source=scripts/board/lib.sh
+source "$here/lib.sh"
+if ! ssh -o BatchMode=yes board true 2>/dev/null; then
+    echo "FAIL  ssh: cannot reach root@board (try scripts/board/serial-run 'ip a' to diagnose)"
+    exit 1
+fi
+ssh -o BatchMode=yes board sh -s < "$here/health.board.sh"
