@@ -32,9 +32,9 @@ the repository on the host (`scripts/host/*`).
 | `scripts/board/deploy <local> <remote>` | container | rsync over SSH (scp `-O` fallback). |
 | `scripts/board/health` | container | uname, uptime, date (EET/EEST), NTP, RTC, df, ip a, dmesg rtc/eth/remoteproc, PASS/FAIL summary. |
 | `scripts/host/dev [console\|claude\|rc\|up\|rebuild\|<cmd>]` | host | `docker exec` into the container (starts it if needed). |
-| `scripts/host/check-board-net.sh` | host | Link, NM connection, lease, ping, SSH port, container→board ping. |
+| `scripts/host/check-board-net.sh` | host | Link, NM connection, competing NM profiles, lease, ping (pinned to `enp0s31f6`), neighbour, SSH port, container→board ping. No sudo. |
 | `scripts/host/fetch-image` | host | Copy `sdcard.img` + `.sha256` from the output volume to `.build/artifacts/`. |
-| `scripts/host/setup-board-net.sh <MAC>` | **host, sudo** | NM shared connection on `enp0s31f6`, fixed lease, forwarding rules. |
+| `scripts/host/setup-board-net.sh <MAC>` | **host, sudo** | NM shared connection on `enp0s31f6` (autoconnect priority 100, other profiles on the port set to autoconnect=no), fixed lease, forwarding rules. Idempotent. |
 | `scripts/host/flash-sd.sh [image]` | **host, sudo** | Write the image to the SD card over U-Boot UMS, with safety checks. |
 
 Only the `board-operator` agent uses `scripts/board/*`. See `.claude/agents/`.
@@ -156,3 +156,23 @@ scripts/host/dev                         # plain shell in the container
   2000-01-01, and the boot script then restores the last known good time
   (`/var/lib/astroclock/last-time`), so the clock never goes back to 2000.
   NTP corrects it once the network is up.
+
+## Troubleshooting
+
+Work from the bottom of the stack up. `scripts/host/check-board-net.sh` (host)
+and `scripts/board/serial-tail 80` (container) are the first two looks.
+
+| Symptom | Check / fix |
+| --- | --- |
+| **No serial output at all and no ST logo on the LCD** after power-on or reset | The board is not booting from the SD card. Check the **boot switches SW1: BOOT0 = ON, BOOT2 = ON** (SD card), then check that the **SD card is fully seated**. Power-cycle after changing either. The 2026-10-15 outage was a boot switch that had moved. The ST-LINK (CN11) is powered by USB, so `/dev/host/serial/by-id/*STLink*` still exists while the SoC is silent. |
+| Serial device missing in the container | ST-LINK cable (CN11) or board power. Then `scripts/board/console -k && scripts/board/console -d`. |
+| Boot log ends in U-Boot / `STM32MP>` prompt | Autoboot was interrupted (stray key on the console), or UMS is still running: `Ctrl-C`, then `reset`. |
+| `check-board-net.sh`: neighbour + ping FAIL, SSH "No route to host" | The board is not up on eth0. Check the serial console first: is it booted, and does `ip a` show 10.42.0.2? Then check the cable. |
+| `check-board-net.sh`: "competing autoconnect profile" / `dk2-shared` not active after a host reboot | Another NM profile ("Wired connection 1") took `enp0s31f6`. Re-run `sudo scripts/host/setup-board-net.sh 10:e7:7a:e5:5f:b0`. It gives `dk2-shared` priority 100 and turns off autoconnect for other profiles bound to the port. |
+| Host ping works, container SSH refused / port unreachable | The forwarding rule is missing (NM recreated its table). `sudo /usr/local/sbin/astro-board-fw`, and check `systemctl status astro-board-fw`. |
+| SSH host-key mismatch after reflash | `ssh-keygen -f ~/.ssh/known_hosts.board -R 10.42.0.2` (container). |
+| Host file times look shifted (e.g. 13:25 for 20:25 EEST) | Host time zone is wrong. Check `timedatectl`, then fix it with `sudo timedatectl set-timezone Europe/Bucharest`. The container (UTC) and the board (EET/EEST) are unaffected. |
+
+Before 2026-10-15, `check-board-net.sh` reported its ping checks as PASS even with
+100% packet loss: `ping | tail -1` returned tail's status. It now uses
+`pipefail` and pins the ping to `enp0s31f6`.
