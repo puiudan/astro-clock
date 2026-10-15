@@ -5,6 +5,9 @@
 # What it does (Debian 13, NetworkManager 1.52, iptables-nft backend):
 #  1. NM connection "dk2-shared" on enp0s31f6: ipv4.method=shared, 10.42.0.1/24
 #     (NM runs dnsmasq for DHCP/DNS and NATs 10.42.0.0/24 out of the default route).
+#     autoconnect-priority 100; other ethernet profiles bound to enp0s31f6 (NM's
+#     auto-created "Wired connection 1") get autoconnect=no so they cannot take
+#     the port after a host reboot.
 #  2. Fixed DHCP lease MAC -> 10.42.0.2 (hostname astroclock) in
 #     /etc/NetworkManager/dnsmasq-shared.d/astro-board.conf.
 #  3. Forwarding fixes, installed as /usr/local/sbin/astro-board-fw and re-applied
@@ -21,6 +24,7 @@ set -euo pipefail
 
 IFACE=enp0s31f6
 CON=dk2-shared
+PRIORITY=100   # > 0 (NM auto-created profiles use 0), so dk2-shared wins on IFACE
 HOST_CIDR=10.42.0.1/24
 SUBNET=10.42.0.0/24
 BOARD_IP=10.42.0.2
@@ -53,22 +57,61 @@ echo "firewall backend: nftables (iptables-nft); Docker and NM rules share the f
 
 say "1. NetworkManager connection $CON"
 changed=0
-if nmcli -t -f NAME connection show | grep -qx "$CON"; then
-    current=$(nmcli -g connection.interface-name,ipv4.method,ipv4.addresses,ipv6.method,connection.autoconnect connection show "$CON")
-    if [[ $current != "$IFACE:shared:$HOST_CIDR:disabled:yes" ]]; then
-        nmcli connection modify "$CON" connection.interface-name "$IFACE" ipv4.method shared \
-            ipv4.addresses "$HOST_CIDR" ipv6.method disabled connection.autoconnect yes
-        changed=1; echo "updated (was: $current)"
+nm_get() { nmcli -g "$2" connection show "$1"; }  # one field per call: -g prints multi-field output per setting group
+want=(connection.interface-name "$IFACE" ipv4.method shared ipv4.addresses "$HOST_CIDR"
+      ipv6.method disabled connection.autoconnect yes)
+if nmcli -g NAME connection show | grep -qxF "$CON"; then
+    diff=()
+    for ((i = 0; i < ${#want[@]}; i += 2)); do
+        cur=$(nm_get "$CON" "${want[i]}")
+        [[ $cur == "${want[i+1]}" ]] || diff+=("${want[i]}=$cur")
+    done
+    if (( ${#diff[@]} )); then
+        nmcli connection modify "$CON" "${want[@]}"
+        changed=1; echo "updated (was: ${diff[*]})"
     else
         echo "already configured"
     fi
 else
-    nmcli connection add type ethernet con-name "$CON" ifname "$IFACE" ipv4.method shared \
-        ipv4.addresses "$HOST_CIDR" ipv6.method disabled connection.autoconnect yes
+    nmcli connection add type ethernet con-name "$CON" ifname "$IFACE" "${want[@]:2}"
     changed=1; echo "created"
 fi
-others=$(nmcli -t -f NAME,DEVICE,TYPE connection show | awk -F: -v c="$CON" '$3=="802-3-ethernet" && $1!=c {print $1}')
-[[ -z $others ]] || echo "note: other ethernet profiles exist (${others//$'\n'/, }); $CON is the one to keep active on $IFACE"
+# Priority alone needs no re-activation; it only decides which profile NM picks
+# at the next autoconnect (boot, cable plug).
+if [[ $(nm_get "$CON" connection.autoconnect-priority) != "$PRIORITY" ]]; then
+    nmcli connection modify "$CON" connection.autoconnect-priority "$PRIORITY"
+    echo "set autoconnect-priority $PRIORITY"
+fi
+
+say "1b. Competing ethernet profiles on $IFACE"
+# NM's auto-created "Wired connection 1" is bound to $IFACE and autoconnects too;
+# after a host reboot it can win the race and leave the board without DHCP.
+# Profiles bound to $IFACE get autoconnect=no (kept, not deleted; re-enable with
+# nmcli connection modify <name> connection.autoconnect yes). Unbound ethernet
+# profiles are only reported: they may serve other adapters, and the priority
+# above already makes $CON win on $IFACE.
+while IFS=: read -r uuid type; do
+    [[ $type == *ethernet ]] || continue
+    name=$(nm_get "$uuid" connection.id)
+    [[ $name == "$CON" ]] && continue
+    ifname=$(nm_get "$uuid" connection.interface-name)
+    auto=$(nm_get "$uuid" connection.autoconnect)
+    if [[ $ifname == "$IFACE" ]]; then
+        if [[ $auto == yes ]]; then
+            nmcli connection modify "$uuid" connection.autoconnect no
+            echo "'$name': autoconnect disabled (was bound to $IFACE)"
+        else
+            echo "'$name': already autoconnect=no"
+        fi
+    else
+        echo "'$name': not bound to $IFACE (interface-name='${ifname}', autoconnect=$auto); left alone, priority $PRIORITY wins"
+    fi
+done < <(nmcli -g UUID,TYPE connection show)
+active=$(nmcli -g GENERAL.CONNECTION device show "$IFACE" 2>/dev/null || true)
+if [[ $active != "$CON" ]]; then
+    echo "active on $IFACE: '${active:-none}', not $CON"
+    changed=1
+fi
 
 say "2. Fixed DHCP lease $mac -> $BOARD_IP"
 lease_content="# Managed by astro-clock scripts/host/setup-board-net.sh
