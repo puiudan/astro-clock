@@ -30,6 +30,7 @@ the repository on the host (`scripts/host/*`).
 | `scripts/board/ssh [args]` | container | SSH to `root@10.42.0.2`. |
 | `scripts/board/run "<cmd>"` | container | One command over SSH, exits with its status. |
 | `scripts/board/deploy <local> <remote>` | container | rsync over SSH (scp `-O` fallback). |
+| `scripts/board/deploy-kernel [-n] [zImage [dtb]]` | container | Install a new kernel + DT in `/boot` over SSH, keep the running pair as `.prev` with a `previous` extlinux entry, reboot and wait for SSH. See [Kernel loop](#kernel-loop-without-reflashing). |
 | `scripts/board/health` | container | uname, uptime, date (EET/EEST), NTP, RTC, df, ip a, dmesg rtc/eth/remoteproc, PASS/FAIL summary. |
 | `scripts/host/dev [console\|claude\|rc\|up\|rebuild\|<cmd>]` | host | `docker exec` into the container (starts it if needed). |
 | `scripts/host/check-board-net.sh` | host | Link, NM connection, competing NM profiles, lease, ping (pinned to `enp0s31f6`), neighbour, SSH port, container→board ping. No sudo. |
@@ -102,6 +103,67 @@ Steps:
 Flashing replaces the root filesystem, including the dropbear host key. The
 first SSH connection after a reflash then fails the host-key check. Run
 `ssh-keygen -f ~/.ssh/known_hosts.board -R 10.42.0.2` in the container once.
+
+## Kernel loop without reflashing
+
+Kernel and device-tree changes do not need a new SD image. Build, then let the
+`board-operator` agent install them:
+
+```sh
+make build                       # or rebuild just the kernel: see below
+scripts/board/deploy-kernel      # defaults: $ASTRO_OUTPUT_DIR/images/{zImage,stm32mp157f-dk2.dtb}
+scripts/board/deploy-kernel -n   # install only, reboot later
+```
+
+What it does:
+
+1. Checks the files (ARM zImage magic, DTB magic) and that the board's root fs
+   (and so `/boot`) is mmcblk0p4, comparing major:minor because `/proc/mounts`
+   only says `/dev/root`. It writes **only** `/boot/zImage*`,
+   `/boot/stm32mp157f-dk2.dtb*` and `/boot/extlinux/extlinux.conf`. Partitions
+   1-3 (fsbl1, fsbl2, fip) and U-Boot are never touched.
+2. Uploads to `*.new`, checks the sha256 on the board, copies the running pair to
+   `zImage.prev` / `stm32mp157f-dk2.dtb.prev`, then swaps the new files in with
+   `mv`. If the board is running the fallback (`astro.boot=previous` in
+   `/proc/cmdline`), `.prev` is left alone so a bad kernel never replaces the
+   last good one. Re-deploying the same files keeps `.prev`, unless it is missing
+   (first run after a flash): then the running pair is copied to `.prev`.
+3. Installs the repository's `extlinux.conf` (overlay) when the board's copy
+   differs; the old one is kept as `extlinux.conf.bak`.
+4. Reboots, waits for SSH, prints `uname -a` and `/proc/cmdline`. Exit status 2
+   means the board came up on the previous kernel.
+
+`extlinux.conf` has a 2-second U-Boot menu:
+
+```text
+astro-clock boot (type 2 + Enter for the previous kernel)
+1:	stm32mp157f-dk2-buildroot
+2:	previous
+Enter choice:
+```
+
+**Recovery if a kernel does not boot** (from the serial console,
+`scripts/host/dev console`):
+
+1. Reset the board. At `Enter choice:` type `2` and Enter within 2 s. Or stop
+   autoboot at `Hit any key` and run
+   `setenv pxe_label_override previous; boot`. (The `previous` entry exists only
+   after the first deploy-kernel run; a freshly flashed card has no `.prev` files.)
+2. Once it is up on the previous kernel, deploy a fixed kernel, or restore by hand:
+   `scripts/board/run 'cd /boot && cp zImage.prev zImage && cp stm32mp157f-dk2.dtb.prev stm32mp157f-dk2.dtb && sync'`.
+3. If neither entry boots, reflash over UMS (above). U-Boot is untouched by
+   deploy-kernel, so `ums 0 mmc 0` is always available.
+
+Rebuilding only the kernel (inside the container). `make build` alone does not
+notice a changed kernel fragment; reconfigure the kernel first:
+
+```sh
+make -C third_party/buildroot O=$ASTRO_OUTPUT_DIR linux-reconfigure   # after fragment/config changes
+make -C third_party/buildroot O=$ASTRO_OUTPUT_DIR linux-rebuild       # after source/DT changes
+make build                                                            # refresh images/ and sdcard.img
+```
+
+Packages added to the root filesystem still need a new `sdcard.img` and a reflash.
 
 ## Reaching the board from the iPad
 

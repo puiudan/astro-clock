@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Install a new kernel and device tree on the board without reflashing.
+#   scripts/board/deploy-kernel [-n] [zImage [dtb]]
+# Defaults: $ASTRO_OUTPUT_DIR/images/{zImage,stm32mp157f-dk2.dtb}.
+#   -n  install only, do not reboot
+#
+# Only files under /boot on the root filesystem (mmcblk0p4) are written; the
+# fsbl/fip partitions 1-3 and U-Boot are never touched. The running pair is
+# kept as zImage.prev / stm32mp157f-dk2.dtb.prev and extlinux.conf gets a
+# "previous" label. If the new kernel does not boot: at the U-Boot menu type
+# 2 + Enter, or reflash over UMS (docs/dev-loop.md).
+set -euo pipefail
+# shellcheck source=scripts/board/lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
+
+reboot=1
+if [[ ${1:-} == -n ]]; then
+    reboot=0
+    shift
+fi
+[[ $# -le 2 ]] || board_die "usage: deploy-kernel [-n] [zImage [dtb]]"
+images=${ASTRO_OUTPUT_DIR:-"$board_project_root/.build/output"}/images
+kernel=${1:-"$images/zImage"}
+dtb=${2:-"$images/stm32mp157f-dk2.dtb"}
+extlinux="$board_project_root/external/board/stm32mp157f-dk2/overlay/boot/extlinux/extlinux.conf"
+dtb_name=stm32mp157f-dk2.dtb
+
+# Refuse anything that is not an ARM zImage (magic 0x016f2818 at 0x24) or a
+# flattened device tree (0xd00dfeed), so a wrong argument cannot brick boot.
+[[ -f $kernel ]] || board_die "no such kernel: $kernel"
+[[ -f $dtb ]] || board_die "no such dtb: $dtb"
+[[ $(od -An -tx1 -j36 -N4 -- "$kernel" 2>/dev/null | tr -d ' ') == 18286f01 ]] \
+    || board_die "not an ARM zImage: $kernel"
+[[ $(od -An -tx1 -N4 -- "$dtb" 2>/dev/null | tr -d ' ') == d00dfeed ]] \
+    || board_die "not a device tree blob: $dtb"
+grep -q '^label previous$' "$extlinux" || board_die "no 'label previous' in $extlinux"
+
+kernel_sha=$(sha256sum -- "$kernel" | cut -d' ' -f1)
+dtb_sha=$(sha256sum -- "$dtb" | cut -d' ' -f1)
+echo "kernel $kernel ($(stat -c %s -- "$kernel") B) sha256 $kernel_sha"
+echo "dtb    $dtb ($(stat -c %s -- "$dtb") B) sha256 $dtb_sha"
+
+ssh -o BatchMode=yes board true 2>/dev/null \
+    || board_die "cannot reach the board over SSH (scripts/board/serial-run 'ip a' to diagnose)"
+
+# Preflight on the board: /boot lives on the root fs, which is mmcblk0p4.
+ssh -o BatchMode=yes board sh -s <<'EOF' || board_die "board preflight failed"
+set -e
+# /proc/mounts shows /dev/root, so compare major:minor numbers instead.
+p4=$(cat /sys/class/block/mmcblk0p4/dev)
+root=$(mountpoint -d /)
+[ "$root" = "$p4" ] || { echo "root fs is $root, mmcblk0p4 is $p4" >&2; exit 1; }
+if mountpoint -q /boot; then
+    echo "/boot is a separate mount, not the root fs" >&2
+    exit 1
+fi
+[ -f /boot/zImage ] && [ -f /boot/stm32mp157f-dk2.dtb ] && [ -f /boot/extlinux/extlinux.conf ] \
+    || { echo "missing /boot/zImage, dtb or extlinux.conf" >&2; exit 1; }
+EOF
+
+# Upload next to the targets, then verify, then swap with mv (atomic on ext4).
+scp -O -q -p -- "$kernel" board:/boot/zImage.new
+scp -O -q -p -- "$dtb" "board:/boot/$dtb_name.new"
+scp -O -q -p -- "$extlinux" board:/boot/extlinux/extlinux.conf.new
+
+ssh -o BatchMode=yes board sh -s -- "$kernel_sha" "$dtb_sha" "$dtb_name" <<'EOF'
+set -eu
+kernel_sha=$1 dtb_sha=$2 dtb=$3
+cd /boot
+[ "$(sha256sum zImage.new | cut -d' ' -f1)" = "$kernel_sha" ] || { echo "zImage checksum mismatch" >&2; exit 1; }
+[ "$(sha256sum "$dtb.new" | cut -d' ' -f1)" = "$dtb_sha" ] || { echo "dtb checksum mismatch" >&2; exit 1; }
+
+# Rotate only when the running kernel is the main entry. When the board runs
+# the fallback, /boot/zImage is the bad one and .prev must stay as it is.
+keep_prev() {
+    cp -p zImage zImage.prev.tmp && mv zImage.prev.tmp zImage.prev
+    cp -p "$dtb" "$dtb.prev.tmp" && mv "$dtb.prev.tmp" "$dtb.prev"
+    echo "kept the running pair as zImage.prev / $dtb.prev"
+}
+if grep -q 'astro.boot=previous' /proc/cmdline; then
+    echo "running the fallback kernel: keeping zImage.prev / $dtb.prev"
+elif [ ! -f zImage.prev ] || [ ! -f "$dtb.prev" ]; then
+    keep_prev
+elif [ "$(sha256sum zImage | cut -d' ' -f1)" = "$kernel_sha" ] \
+        && [ "$(sha256sum "$dtb" | cut -d' ' -f1)" = "$dtb_sha" ]; then
+    echo "same kernel and dtb already installed: keeping zImage.prev / $dtb.prev"
+else
+    keep_prev
+fi
+mv zImage.new zImage
+mv "$dtb.new" "$dtb"
+
+if cmp -s extlinux/extlinux.conf.new extlinux/extlinux.conf; then
+    rm extlinux/extlinux.conf.new
+    echo "extlinux.conf unchanged (has the previous entry)"
+else
+    cp -p extlinux/extlinux.conf extlinux/extlinux.conf.bak
+    mv extlinux/extlinux.conf.new extlinux/extlinux.conf
+    echo "extlinux.conf updated from the repository (old one: extlinux.conf.bak)"
+fi
+sync
+ls -l /boot /boot/extlinux
+EOF
+
+if (( ! reboot )); then
+    echo "installed; not rebooting (-n)"
+    exit 0
+fi
+echo "rebooting the board"
+ssh -o BatchMode=yes board 'sync; reboot' || true
+# Wait for SSH to go down, then come back.
+for _ in $(seq 30); do
+    ssh -o BatchMode=yes -o ConnectTimeout=2 board true 2>/dev/null || break
+    sleep 1
+done
+for _ in $(seq 60); do
+    if ssh -o BatchMode=yes -o ConnectTimeout=3 board true 2>/dev/null; then
+        ssh -o BatchMode=yes board 'uname -a; cat /proc/cmdline'
+        if ssh -o BatchMode=yes board 'grep -q astro.boot=previous /proc/cmdline'; then
+            echo "WARNING: the board booted the previous kernel" >&2
+            exit 2
+        fi
+        echo "board is back on the new kernel"
+        exit 0
+    fi
+    sleep 2
+done
+board_die "board did not come back over SSH within ~2 min; check scripts/board/serial-tail 80"

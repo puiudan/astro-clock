@@ -24,6 +24,7 @@ file only adds Claude Code specifics.
 | `scripts/board/serial-tail [-f] [n]` | Tail the current serial log (boot logs, kernel messages) |
 | `scripts/board/run "<cmd>"` | Run a command over SSH (`root@10.42.0.2`) |
 | `scripts/board/deploy <local> <remote>` | Copy files to the board without reflashing (rsync, scp fallback) |
+| `scripts/board/deploy-kernel [-n]` | Install zImage + DTB in /boot over SSH, keep `.prev` fallback, reboot |
 | `scripts/board/ssh` | Interactive SSH to the board |
 | `scripts/board/health` | Board health check with PASS/FAIL summary |
 | `scripts/board/ssh-setup` | One-time dev key, `authorized_keys` and `~/.ssh/config` setup |

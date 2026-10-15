@@ -1,12 +1,29 @@
-# Serial-console and Ethernet milestone: omit display, audio and wireless.
+# Display milestone: DSI panel and touch on; audio and wireless off.
 # Keep the upstream board configuration for storage, power and wired networking.
-# DRM used to select I2C implicitly. The root SD card needs the I2C PMIC.
+# Keep I2C explicit: the root SD card needs the I2C PMIC (docs/boot-fix-2026-09-26.md).
 CONFIG_I2C=y
-# CONFIG_DRM is not set
-# CONFIG_FB is not set
-# CONFIG_BACKLIGHT_LCD_SUPPORT is not set
 # CONFIG_SOUND is not set
 # CONFIG_WIRELESS is not set
 # CONFIG_WLAN is not set
 # CONFIG_BT is not set
-# CONFIG_INPUT_TOUCHSCREEN is not set
+
+# Display: LTDC -> DSI -> OTM8009A panel (480x800). The panel driver registers
+# its own DSI-controlled backlight. LTDC defers forever unless the sii9022 HDMI
+# bridge on its other endpoint has a driver, so DRM_SII902X is required.
+CONFIG_DRM=y
+CONFIG_DRM_STM=y
+CONFIG_DRM_STM_DSI=y
+CONFIG_DRM_PANEL_ORISETECH_OTM8009A=y
+CONFIG_DRM_SII902X=y
+CONFIG_BACKLIGHT_CLASS_DEVICE=y
+# Text console on the LCD (fbcon) for bring-up; no legacy /dev/fb0.
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+# CONFIG_FB is not set
+# Vivante GPU (gpu@59000000) is out of scope for now.
+# CONFIG_DRM_ETNAVIV is not set
+
+# Touch: FocalTech FT6236 on I2C1 @0x38 (edt-ft5x06 driver).
+CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_TOUCHSCREEN=y
+CONFIG_TOUCHSCREEN_EDT_FT5X06=y
