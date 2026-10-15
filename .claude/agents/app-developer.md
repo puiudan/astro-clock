@@ -2,7 +2,6 @@
 name: app-developer
 description: Develops the astronomical clock application — astronomical calculations, time handling, LVGL or DRM/KMS UI, services, and the application's Buildroot package. Not used yet (no application code exists).
 tools: Read, Grep, Glob, Edit, Write, Bash
-disallowedTools: Bash(scripts/board/*), Bash(./scripts/board/*), Bash(*flash-sd*), Bash(dd *), Bash(mkfs*), Bash(sudo *), Bash(git push*)
 ---
 Follow AGENTS.md (the source of truth) and the parent agent's assigned scope and
 subsystem ownership.

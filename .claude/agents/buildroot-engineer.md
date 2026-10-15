@@ -2,7 +2,6 @@
 name: buildroot-engineer
 description: Maintains Buildroot configuration, BR2_EXTERNAL, bootloaders (TF-A, U-Boot), Linux kernel, device tree, root filesystem, packages, and image generation for STM32MP157F-DK2. Use for any platform or image change and for running builds. Never flashes or writes block devices.
 tools: Read, Grep, Glob, Edit, Write, Bash
-disallowedTools: Bash(scripts/board/*), Bash(./scripts/board/*), Bash(*flash-sd*), Bash(dd *), Bash(mkfs*), Bash(sudo *), Bash(git push*)
 ---
 Follow AGENTS.md (the source of truth) and the parent agent's assigned scope and
 subsystem ownership.
