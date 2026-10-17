@@ -31,6 +31,7 @@ watched the LCD and touched the screen.
 |---|---|---|
 | fbcon on the LCD, echo to `/dev/tty0` shows on screen | user-reported before this session | HARDWARE |
 | `modetest -M stm -s 34@39:480x800`, 90 s and a 5 min run stopped early | The log shows the 480x800 50 Hz mode set. The user saw a clean, full-screen pattern with no edge or colour faults. fbcon came back after both runs and no processes were left. | HARDWARE |
+| 60 Hz mode: `modetest -M stm -s 34@39:480x800-60 -v` (page flipping), 60 s | The log shows the 480x800 60 Hz mode set on connector 34 / CRTC 39. Of 59 refresh-rate readings, 57 were 60.00 Hz, one 59.99 Hz and the first 60.30 Hz. The user saw a stable, clean picture, and fbcon came back. | HARDWARE |
 | Stopping modetest early | Killing the `sleep` that feeds modetest's stdin makes modetest exit normally | HARDWARE |
 | Backlight over the pattern: 255, 128, 64, 32, 8, 0, then 240, 10 s per step (`/tmp/bltest.sh`) | `actual_brightness` followed each value. The user saw the screen dim at each step and go dark at 0. Brightness was restored to 240. | HARDWARE |
 | Same backlight steps over fbcon | Writes OK, but the change is hard to see on a mostly black console | HARDWARE |
@@ -81,7 +82,6 @@ watched the LCD and touched the screen.
 - **No `timeout` on the board:** BusyBox has no `timeout` applet. Use `cmd & p=$!; sleep N; kill $p`.
 
 ### Not verified
-- The 60 Hz mode (#1). Only the preferred 50 Hz mode was tested.
 - `flash-sd.sh` warning: shellcheck clean (STATIC), but not yet run on a real flash.
 
 ---
