@@ -1,5 +1,21 @@
 # astro-clock — Status Report
 
+## Display milestone — reached 2026-10-17
+
+The LCD, backlight and touchscreen work on the real STM32MP157F-DK2 (HARDWARE),
+with kernel 6.9.8 and image `c3fe9e69…`.
+
+| Area | Result |
+|---|---|
+| Display | DSI-1 480x800 portrait, OTM8009A panel. Both modes work: 50 Hz (preferred) and 60 Hz, which measured 60.00 Hz. The modetest pattern is clean, and fbcon comes back afterwards. |
+| Backlight | `/sys/class/backlight/5a000000.dsi.0`, 0–255. It dims visibly at each step and goes dark at 0. |
+| Touch range | `/dev/input/event0` reports X 0–479, Y 0–799. The corner test gave X 9..479, Y 34..772: TL (9,44), TR (479,34), BR (456,756), BL (27,772). |
+| Touch orientation | X grows to the right and Y grows downward, matching the display's pixels. Not swapped, not mirrored, no calibration needed. |
+| Multi-touch | 2 slots. Two fingers were held together for 2.7 s and 2.0 s with no drop-outs, and reports come at ~100 Hz while moving. Track contacts by `ABS_MT_TRACKING_ID`, not by slot. |
+| Touch chip ID | Register 0xA3 reads `0x64`, the **FT6336** family. The DT (upstream C-DK2) says `focaltech,ft6236` (FT6236 = 0x36). This is harmless: the edt-ft5x06 driver handles both as M09 ("EP0110M09"). A DT fix is optional, for accuracy only. |
+
+Details, commands and the corrected touch history follow below.
+
 ## Update 2026-10-17 — Step 4 (display, backlight, touch) on hardware
 
 Branch `feat/display`, on top of WIP commit `830cc75`. Labels: STATIC /
