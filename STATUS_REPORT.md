@@ -36,20 +36,25 @@ watched the LCD and touched the screen.
 | Same backlight steps over fbcon | Writes OK, but the change is hard to see on a mostly black console | HARDWARE |
 | OTM8009A driver writes brightness over DSI and warns `mipi dsi dcs write buffer failed` on error; no such warning was in dmesg | read from the kernel source, `panel-orisetech-otm8009a.c:382` | STATIC |
 
-### FAIL — touch reports no events
-- evtest on `event0` ran for 60 s (20:34:26–20:35:26 board time) while the user touched all four corners. It logged only the device header: no events of any kind.
-- `/proc/interrupts` showed `50: 0 0 stm32gpio 2 Edge ft6236` at 20:36:29, after the touches. The interrupt has never fired since boot, so this is not a timing miss.
-- The I2C side works: the driver probed and read the model name "EP0110M09". dmesg says `supply vcc/iovcc not found, using dummy regulator`.
-- The DT node is `touchscreen@38` with `interrupts = <2 2>` on GPIOF and no reset GPIO. From memory this matches upstream `stm32mp157c-dk2.dts`; not yet checked against the source.
-- Possible causes (INFERRED, none verified):
-  - The PF2 pin is mis-configured (mux, pull-up or EXTI).
-  - The controller is in reset or a low-power state. The touch controller may share its reset with the panel, which the panel driver toggles.
-  - This F-DK2 display revision differs from C-DK2.
-- Next, all read-only checks first:
-  - pinctrl and gpio debugfs for PF2;
-  - the GPIO level of PF2 while touching;
-  - the controller's registers over I2C (needs i2c-tools);
-  - a diff of the DT node against the kernel and ST DTS.
+### Touch — PASS (corrected; an earlier version of this report said FAIL)
+- The earlier "FAIL" was a test error. The user did not touch the screen during the first capture (20:34:26–20:35:26), so zero events were expected. The interrupt count was still 0 at 20:42:03, so the register-sampling probe after it (20:40:14–20:41:14) saw no touches either. That FAIL and the causes listed for it are withdrawn.
+- Corner test, `sh /tmp/corners.sh` (evtest on `event0` for 60 s, then an awk summary). It was copied with `scripts/board/deploy` and started by the user at 20:51:51 board time:
+
+| Corner | Expected | First coordinate |
+|---|---|---|
+| top-left | (0, 0) | (9, 44) |
+| top-right | (479, 0) | (479, 34) |
+| bottom-right | (479, 799) | (456, 756) |
+| bottom-left | (0, 799) | (27, 772) |
+
+- Exactly 4 touches; X range 9..479, Y range 34..772. The axes are neither swapped nor mirrored, and match the 480x800 portrait mode. The ft6236 interrupt count went from 37 to 84. Label: HARDWARE.
+- The 30–45 px gaps from the edges fit fingertip touches. No calibration is needed (INFERRED).
+- Side findings (HARDWARE, reads only):
+  - The controller reports chip ID `0xA3 = 0x64`, an FT6336 family part, while the DT says `focaltech,ft6236`. The edt-ft5x06 driver handles both as M09 ("EP0110M09"), so this is harmless.
+  - Its registers show working mode, trigger (interrupt) mode, threshold 0x1c and rate 0x0a.
+- STATIC: our F-DK2 DT includes `stm32mp157c-dk2.dts` unchanged, so the touch and panel nodes are exactly upstream C-DK2.
+- Not tested: multi-touch (2 slots are advertised).
+- The kernel has no `CONFIG_DEBUG_FS` and the board has no libgpiod. `devmem`, `i2cget` and `i2cdump` are present.
 
 ### Findings on the dev loop
 - **The earlier "failed reflash" was a stale image:** `flash-sd.sh` wrote `.build/artifacts/astroclock-sdcard-latest.img`, which was still the old image because `scripts/host/fetch-image` had not been run. The user found the cause.
@@ -59,11 +64,11 @@ watched the LCD and touched the screen.
   - Container down or file unreadable: it prints a note that the check was skipped.
   - Checked STATIC only. Claude Code's permission rules block every shell command that mentions `flash-sd`, so I could not run shellcheck or `bash -n` on it; I only read it through. **The user should run `shellcheck scripts/host/flash-sd.sh`.**
 - **Auto mode blocks backlight writes:** the auto-mode classifier blocked board-operator's sysfs brightness write as "Remote Shell Writes". The user ran those writes with `! scripts/board/run …`. Either add a permission rule for such tests or keep running them by hand.
-- **Long one-line commands are unreliable:** a long `! scripts/board/run '…'` line never reached the board, most likely broken when pasted. Deploying a small script to `/tmp` (`scripts/board/deploy`) and running `sh /tmp/<script>` worked.
+- **Long one-line commands are unreliable:** twice a long `! scripts/board/run '…'` line never reached the board, most likely broken when pasted. Deploying a small script to `/tmp` (`scripts/board/deploy`) and running `sh /tmp/<script>` worked.
 - **No `timeout` on the board:** BusyBox has no `timeout` applet. Use `cmd & p=$!; sleep N; kill $p`.
 
 ### Not verified
-- Touch orientation and calibration, blocked by the touch FAIL.
+- Multi-touch (second slot).
 - The 60 Hz mode (#1). Only the preferred 50 Hz mode was tested.
 - `flash-sd.sh` warning: not run, not shellchecked.
 
