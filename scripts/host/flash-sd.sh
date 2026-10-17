@@ -4,7 +4,8 @@
 #   sudo scripts/host/flash-sd.sh [image]      (default: .build/artifacts/astroclock-sdcard-latest.img)
 # The image must have <image>.sha256 next to it (scripts/host/fetch-image makes it).
 #
-# Safety: verifies the image checksum first; lists all disks with model, serial,
+# Safety: verifies the image checksum first; warns and asks if it differs from
+# the build volume's sdcard.img (container astro-clock-dev, when running); lists all disks with model, serial,
 # size and transport; only offers removable or USB disks of at most 64 GB that
 # are larger than the image; requires typing the device name; unmounts only
 # that device's partitions; re-checks its identity right before writing; then
@@ -32,6 +33,31 @@ echo "expected: $expected"
 actual=$(sha256sum -- "$image" | awk '{print $1}')
 echo "actual:   $actual"
 [[ $actual == "$expected" ]] || die "image checksum mismatch; refusing to write"
+
+# Catch a stale image: compare with the build volume's sdcard.img, which is
+# only copied here by scripts/host/fetch-image.
+echo
+echo "== Build volume"
+container=astro-clock-dev
+build_img=/var/cache/astro-clock/output/images/sdcard.img
+build_sum=
+if command -v docker >/dev/null &&
+   [[ $(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null) == true ]]; then
+    build_sum=$(timeout 300 docker exec "$container" sha256sum "$build_img" 2>/dev/null | awk '{print $1}') || build_sum=
+fi
+if [[ ! $build_sum =~ ^[0-9a-f]{64}$ ]]; then
+    echo "note: could not read $build_img in container $container; stale-image check skipped"
+elif [[ $build_sum == "$expected" ]]; then
+    echo "matches $build_img"
+else
+    build_date=$(docker exec "$container" date -u -r "$build_img" '+%Y-%m-%d %H:%M:%SZ' 2>/dev/null || echo '?')
+    echo "WARNING: this image differs from the build volume's sdcard.img"
+    echo "  selected: $expected  ($(date -u -r "$image" '+%Y-%m-%d %H:%M:%SZ'))"
+    echo "  build:    $build_sum  ($build_date)"
+    echo "  To flash the build, run scripts/host/fetch-image first, then re-run this script."
+    read -r -p "Type 'yes' to flash the selected image anyway, anything else aborts: " answer
+    [[ $answer == yes ]] || die "aborted (stale image)"
+fi
 
 echo
 echo "== Block devices (whole disks)"

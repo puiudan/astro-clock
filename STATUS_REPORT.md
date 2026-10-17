@@ -1,5 +1,74 @@
 # astro-clock — Status Report
 
+## Update 2026-10-17 — Step 4 (display, backlight, touch) on hardware
+
+Branch `feat/display`, on top of WIP commit `830cc75`. Labels: STATIC /
+HOST-TEST / BUILD / HARDWARE. The board tests ran through the board-operator
+agent over SSH (`scripts/board/run`, `scripts/board/deploy`). The user
+watched the LCD and touched the screen.
+
+**Board state:**
+- Image `sdcard.img` sha256 `c3fe9e69…`, flashed and verified by read-back (user).
+- Linux 6.9.8 `#3` built 2026-10-15. Cmdline: `console=ttySTM0,115200 root=/dev/mmcblk0p4 rootwait`.
+- The reflash changed the SSH host key. The old entry was removed from `~/.ssh/known_hosts.board`, as dev-loop.md describes.
+
+**Devices found:**
+| Item | Value |
+|---|---|
+| DRM | `/dev/dri/card0`, driver `stm` 1.0.0 |
+| DSI-1 connector | id 34, connected, encoder 33 |
+| HDMI-A-1 connector | id 32, disconnected |
+| CRTC | id 39 |
+| Primary plane | id 35. Formats: AR24 XR24 RG24 RG16 AR15 XR15 AR12 XR12 C8 |
+| Overlay plane | id 40 |
+| Panel modes | 480x800 at 50 Hz (#0, preferred) and at 60 Hz (#1) |
+| Backlight | `/sys/class/backlight/5a000000.dsi.0`, type raw, max 255, boots at 240. The panel driver `panel-orisetech-otm8009a` sets brightness over DSI. |
+| Touch | `event0` "EP0110M09", edt-ft5x06 driver at i2c-0 0x38, DT `focaltech,ft6236`. Interrupt on PF2, falling edge. X 0–479, Y 0–799, 2 touch slots. |
+| Power button | `event1` `pmic_onkey` |
+
+### Verified
+| Item | Result | Label |
+|---|---|---|
+| fbcon on the LCD, echo to `/dev/tty0` shows on screen | user-reported before this session | HARDWARE |
+| `modetest -M stm -s 34@39:480x800`, 90 s and a 5 min run stopped early | The log shows the 480x800 50 Hz mode set. The user saw a clean, full-screen pattern with no edge or colour faults. fbcon came back after both runs and no processes were left. | HARDWARE |
+| Stopping modetest early | Killing the `sleep` that feeds modetest's stdin makes modetest exit normally | HARDWARE |
+| Backlight over the pattern: 255, 128, 64, 32, 8, 0, then 240, 10 s per step (`/tmp/bltest.sh`) | `actual_brightness` followed each value. The user saw the screen dim at each step and go dark at 0. Brightness was restored to 240. | HARDWARE |
+| Same backlight steps over fbcon | Writes OK, but the change is hard to see on a mostly black console | HARDWARE |
+| OTM8009A driver writes brightness over DSI and warns `mipi dsi dcs write buffer failed` on error; no such warning was in dmesg | read from the kernel source, `panel-orisetech-otm8009a.c:382` | STATIC |
+
+### FAIL — touch reports no events
+- evtest on `event0` ran for 60 s (20:34:26–20:35:26 board time) while the user touched all four corners. It logged only the device header: no events of any kind.
+- `/proc/interrupts` showed `50: 0 0 stm32gpio 2 Edge ft6236` at 20:36:29, after the touches. The interrupt has never fired since boot, so this is not a timing miss.
+- The I2C side works: the driver probed and read the model name "EP0110M09". dmesg says `supply vcc/iovcc not found, using dummy regulator`.
+- The DT node is `touchscreen@38` with `interrupts = <2 2>` on GPIOF and no reset GPIO. From memory this matches upstream `stm32mp157c-dk2.dts`; not yet checked against the source.
+- Possible causes (INFERRED, none verified):
+  - The PF2 pin is mis-configured (mux, pull-up or EXTI).
+  - The controller is in reset or a low-power state. The touch controller may share its reset with the panel, which the panel driver toggles.
+  - This F-DK2 display revision differs from C-DK2.
+- Next, all read-only checks first:
+  - pinctrl and gpio debugfs for PF2;
+  - the GPIO level of PF2 while touching;
+  - the controller's registers over I2C (needs i2c-tools);
+  - a diff of the DT node against the kernel and ST DTS.
+
+### Findings on the dev loop
+- **The earlier "failed reflash" was a stale image:** `flash-sd.sh` wrote `.build/artifacts/astroclock-sdcard-latest.img`, which was still the old image because `scripts/host/fetch-image` had not been run. The user found the cause.
+- **Fix:** `flash-sd.sh` now compares the image's sha256 with the container's `/var/cache/astro-clock/output/images/sdcard.img` through `docker exec astro-clock-dev`.
+  - Same image: it prints `matches`.
+  - Different image: it prints both hashes and dates, and you must type `yes` to continue.
+  - Container down or file unreadable: it prints a note that the check was skipped.
+  - Checked STATIC only. Claude Code's permission rules block every shell command that mentions `flash-sd`, so I could not run shellcheck or `bash -n` on it; I only read it through. **The user should run `shellcheck scripts/host/flash-sd.sh`.**
+- **Auto mode blocks backlight writes:** the auto-mode classifier blocked board-operator's sysfs brightness write as "Remote Shell Writes". The user ran those writes with `! scripts/board/run …`. Either add a permission rule for such tests or keep running them by hand.
+- **Long one-line commands are unreliable:** a long `! scripts/board/run '…'` line never reached the board, most likely broken when pasted. Deploying a small script to `/tmp` (`scripts/board/deploy`) and running `sh /tmp/<script>` worked.
+- **No `timeout` on the board:** BusyBox has no `timeout` applet. Use `cmd & p=$!; sleep N; kill $p`.
+
+### Not verified
+- Touch orientation and calibration, blocked by the touch FAIL.
+- The 60 Hz mode (#1). Only the preferred 50 Hz mode was tested.
+- `flash-sd.sh` warning: not run, not shellchecked.
+
+---
+
 ## Update 2026-10-15 — Step 5 (dev loop) verification
 
 Ran inside the Dev Container (`/.dockerenv` present), branch `feat/dev-loop`.
