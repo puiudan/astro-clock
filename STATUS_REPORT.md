@@ -53,7 +53,20 @@ watched the LCD and touched the screen.
   - The controller reports chip ID `0xA3 = 0x64`, an FT6336 family part, while the DT says `focaltech,ft6236`. The edt-ft5x06 driver handles both as M09 ("EP0110M09"), so this is harmless.
   - Its registers show working mode, trigger (interrupt) mode, threshold 0x1c and rate 0x0a.
 - STATIC: our F-DK2 DT includes `stm32mp157c-dk2.dts` unchanged, so the touch and panel nodes are exactly upstream C-DK2.
-- Not tested: multi-touch (2 slots are advertised).
+- Two-finger test, `sh /tmp/mt.sh` (evtest for 30 s, started by the user at 20:57:33). Label: HARDWARE.
+  - Results:
+
+    | Contact | Slot | Tracking ID | Duration | Position |
+    |---|---|---|---|---|
+    | 1 | 0 | 12 | 2.74 s | 267,215 |
+    | 2 | 1 | 13 | 2.73 s | 223,563 |
+    | 3 | 0 | 14 | 3.34 s | 258,573 → 259,570 |
+    | 4 | 1 | 15 | 2.02 s | 323,274 → 306,251 |
+
+  - Both fingers were down together twice, for 2.73 s and 2.02 s. At most 2 contacts were active at once, matching the controller limit.
+  - No drop-outs: no contact ended and restarted in the same slot within 0.1 s.
+  - Frames come about 9.6 ms apart (~100 Hz) while a finger moves. The input layer sends no frame when nothing changed, so a still finger produces almost no events. 15 two-finger frames over about 4.8 s of two-finger holds is therefore normal.
+  - The slot a finger gets is not fixed: slot 0 was the upper finger in the first touch and the lower finger in the second. The application must track contacts by `ABS_MT_TRACKING_ID`, not by slot.
 - The kernel has no `CONFIG_DEBUG_FS` and the board has no libgpiod. `devmem`, `i2cget` and `i2cdump` are present.
 
 ### Findings on the dev loop
@@ -68,7 +81,6 @@ watched the LCD and touched the screen.
 - **No `timeout` on the board:** BusyBox has no `timeout` applet. Use `cmd & p=$!; sleep N; kill $p`.
 
 ### Not verified
-- Multi-touch (second slot).
 - The 60 Hz mode (#1). Only the preferred 50 Hz mode was tested.
 - `flash-sd.sh` warning: shellcheck clean (STATIC), but not yet run on a real flash.
 
