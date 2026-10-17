@@ -62,7 +62,7 @@ watched the LCD and touched the screen.
   - Same image: it prints `matches`.
   - Different image: it prints both hashes and dates, and you must type `yes` to continue.
   - Container down or file unreadable: it prints a note that the check was skipped.
-  - Checked STATIC only. Claude Code's permission rules block every shell command that mentions `flash-sd`, so I could not run shellcheck or `bash -n` on it; I only read it through. **The user should run `shellcheck scripts/host/flash-sd.sh`.**
+  - Checked STATIC only. Claude Code's permission rules block every shell command that mentions `flash-sd`, so I could not run shellcheck on it myself. The user ran `shellcheck scripts/host/flash-sd.sh` in the container: clean, no output.
 - **Auto mode blocks backlight writes:** the auto-mode classifier blocked board-operator's sysfs brightness write as "Remote Shell Writes". The user ran those writes with `! scripts/board/run …`. Either add a permission rule for such tests or keep running them by hand.
 - **Long one-line commands are unreliable:** twice a long `! scripts/board/run '…'` line never reached the board, most likely broken when pasted. Deploying a small script to `/tmp` (`scripts/board/deploy`) and running `sh /tmp/<script>` worked.
 - **No `timeout` on the board:** BusyBox has no `timeout` applet. Use `cmd & p=$!; sleep N; kill $p`.
@@ -70,7 +70,7 @@ watched the LCD and touched the screen.
 ### Not verified
 - Multi-touch (second slot).
 - The 60 Hz mode (#1). Only the preferred 50 Hz mode was tested.
-- `flash-sd.sh` warning: not run, not shellchecked.
+- `flash-sd.sh` warning: shellcheck clean (STATIC), but not yet run on a real flash.
 
 ---
 
